@@ -15,14 +15,14 @@ import popupRoutes from './routes/popupRoutes';
 import supportFundRoutes from './routes/supportFundRoutes';
 import visitorRoutes from './routes/visitorRoutes';
 import memberRoutes from './routes/memberRoutes';
-
 import path from 'path';
+
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use('/uploads', express.static(path.join(process.cwd(), 'public/uploads')));
+// 💡 1. CORS 설정을 가장 최상단으로 이동 (모든 요청에 대해 CORS 허용)
 const corsOptions: cors.CorsOptions = {
   origin: [
     "http://localhost:3000",
@@ -36,17 +36,22 @@ const corsOptions: cors.CorsOptions = {
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 };
-
 app.use(cors(corsOptions));
+
+// 💡 2. Body Parser 설정
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// 💡 3. 정적 파일 제공 (CORS와 Body 파싱이 적용된 후 실행)
+app.use('/uploads', express.static(path.join(process.cwd(), 'public/uploads')));
+
+// 4. API 라우터 연결
 app.use('/api/settings', settingRoutes);
 app.use('/api/member-settings', memberSettingRoutes);
 app.use('/api/menus', menuRoutes);
 app.use('/api/pages', pageRoutes);
 app.use('/api/board-configs', boardConfigRoutes);
-app.use('/api/ai',aiRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/boards', boardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/popups', popupRoutes);
