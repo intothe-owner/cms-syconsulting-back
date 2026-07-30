@@ -89,16 +89,17 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
 
     console.log('소상공인24 크롤링을 시작합니다. (가상 브라우저 구동 중...)');
 
-    // 헤드리스 브라우저 실행 (화면에 창이 보이지 않게 백그라운드에서 실행)
+    // 헤드리스 브라우저 실행
     const browser = await puppeteer.launch({
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // 👈 (핵심) 리눅스 공유 메모리 제한 해제
-        '--disable-gpu'            // 👈 서버 환경에서는 GPU가 없으므로 비활성화
+        '--disable-dev-shm-usage', // 리눅스 공유 메모리 제한 해제
+        '--disable-gpu'            // 서버 환경 GPU 비활성화
       ]
     });
+    
     const page = await browser.newPage();
 
     for (let i = 1; i <= maxPage; i++) {
@@ -111,29 +112,26 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
       // 페이지 내부의 DOM에 접근하여 데이터 추출
       const pageData = await page.evaluate((currentBaseUrl) => {
         const scraped: any[] = [];
-
-        // 💡 임시 선택자: 실제 sbiz24.kr의 HTML 구조(class)에 맞춰 수정이 필요합니다.
-        // table > tbody > tr 또는 ul > li 구조를 탐색합니다.
-        const items = document.querySelectorAll('.pbanc-list-wrap li, table tbody tr');
+        
+        // table > tbody > tr 구조를 탐색
+        const items = document.querySelectorAll('table tbody tr');
 
         items.forEach((el) => {
-          const titleEl = el.querySelector('a, .title, .tit');
+          const titleEl = el.querySelector('a');
           if (!titleEl) return;
 
           const title = titleEl.textContent?.trim() || '';
+          const detailUrl = titleEl.href || '';
 
-          let detailUrl = '';
-          const aTag = el.querySelector('a');
-          if (aTag) {
-            detailUrl = aTag.href;
-          }
-
-          // 상태, 등록일, 주관기관 파싱 (클래스명은 실제 웹사이트 참고 필요)
           const category = '소상공인정책자금';
-          const period = el.querySelector('.date, .period')?.textContent?.trim() || '';
-          const department = el.querySelector('.agency, .dept')?.textContent?.trim() || '소상공인시장진흥공단';
+          const department = '소상공인시장진흥공단';
+          
+          // 💡 [수정됨] 제공해주신 클래스명(.c_aplyPd)으로 접수기간을 파싱합니다.
+          const period = el.querySelector('.c_aplyPd')?.textContent?.trim() || '';
 
-          scraped.push({ category, title, period, department, detailUrl });
+          if (title) {
+            scraped.push({ category, title, period, department, detailUrl });
+          }
         });
 
         return scraped;
@@ -147,15 +145,26 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
 
     await browser.close();
 
-    // 기존 데이터 밑에 추가 (Bulk Insert)
-    if (results.length > 0) {
-      await SupportFund.bulkCreate(results);
+    // 💡 [수정됨] 기업마당과 동일하게 중복 검사 후 신규 등록 또는 업데이트 처리
+    let newCount = 0;
+    let updateCount = 0;
+
+    for (const item of results) {
+      const existingFund = await SupportFund.findOne({ where: { title: item.title } });
+
+      if (existingFund) {
+        await existingFund.update(item);
+        updateCount++;
+      } else {
+        await SupportFund.create(item);
+        newCount++;
+      }
     }
 
-    console.log(`소상공인24 크롤링 완료! ${results.length}개 저장.`);
+    console.log(`소상공인24 크롤링 완료! (신규: ${newCount}개, 갱신: ${updateCount}개)`);
     res.json({
       success: true,
-      message: `소상공인24 공고 ${results.length}개 수집 및 기존 DB에 추가 완료`,
+      message: `소상공인24 데이터 갱신 완료 (신규 추가: ${newCount}개 / 기존 업데이트: ${updateCount}개)`,
     });
 
   } catch (error) {
