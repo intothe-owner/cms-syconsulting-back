@@ -130,7 +130,7 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
 
           // 상태, 등록일, 주관기관 파싱 (클래스명은 실제 웹사이트 참고 필요)
           const category = '소상공인정책자금';
-          const period = el.querySelector('.date, .period')?.textContent?.trim() || '';
+          const period = el.querySelector('.c_aplyPd')?.textContent?.trim() || '';
           const department = el.querySelector('.agency, .dept')?.textContent?.trim() || '소상공인시장진흥공단';
 
           scraped.push({ category, title, period, department, detailUrl });
