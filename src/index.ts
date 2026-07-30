@@ -23,7 +23,21 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'public/uploads')));
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+const corsOptions: cors.CorsOptions = {
+  origin: [
+    "http://localhost:3000",
+    "http://113.131.151.103:3000",
+    "http://113.131.151.103:8088",
+    "http://www.syconsulting.co.kr",
+    "http://syconsulting.co.kr",
+    "https://www.syconsulting.co.kr",
+    "https://syconsulting.co.kr",
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
