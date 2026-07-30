@@ -35,15 +35,11 @@ router.post('/scrape', async (req: Request, res: Response) => {
         const period = $(tds[3]).text().trim();
         const department = $(tds[4]).text().trim();
 
-        // 💡 [수정됨] 보내주신 HTML 태그(href 속성) 기반으로 심플하게 URL 추출
         let detailUrl = '';
         const hrefAttr = titleAnchor.attr('href') || '';
 
         if (hrefAttr) {
-          // 1. 주소가 http로 시작하지 않으면 앞에 baseUrl을 붙여줍니다.
           detailUrl = hrefAttr.startsWith('http') ? hrefAttr : baseUrl + hrefAttr;
-
-          // 2. 주소 파라미터의 HTML 엔티티(&amp;)를 실제 앰퍼샌드(&) 기호로 변환합니다.
           detailUrl = detailUrl.replace(/&amp;/g, '&');
         }
 
@@ -56,14 +52,29 @@ router.post('/scrape', async (req: Request, res: Response) => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    // DB 초기화 후 새로 인서트 (덮어쓰기)
-    await SupportFund.destroy({ truncate: true });
-    await SupportFund.bulkCreate(results);
+    // 💡 [수정됨] bulkCreate 대신 제목(title) 기준으로 Update or Insert 처리
+    let newCount = 0;
+    let updateCount = 0;
 
-    console.log('크롤링 및 DB 저장 완료!');
+    for (const item of results) {
+      // 1. DB에 동일한 제목의 공고가 있는지 찾습니다.
+      const existingFund = await SupportFund.findOne({ where: { title: item.title } });
+
+      if (existingFund) {
+        // 2-A. 이미 있다면 최신 정보(기간, URL 등)로 업데이트합니다.
+        await existingFund.update(item);
+        updateCount++;
+      } else {
+        // 2-B. 없다면 새 공고로 DB에 추가합니다.
+        await SupportFund.create(item);
+        newCount++;
+      }
+    }
+
+    console.log(`크롤링 및 DB 저장 완료! (신규: ${newCount}개, 갱신: ${updateCount}개)`);
     res.json({
       success: true,
-      message: `총 ${results.length}개의 데이터 수집 및 저장 완료`,
+      message: `데이터 갱신 완료 (신규 추가: ${newCount}개 / 기존 업데이트: ${updateCount}개)`,
     });
   } catch (error) {
     console.error('크롤링 에러:', error);
