@@ -101,6 +101,9 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
     
     const page = await browser.newPage();
 
+    // 💡 [핵심 추가] 모바일 모드로 열려서 '접수기간' 열이 숨겨지는 것을 방지 (PC 해상도 강제 고정)
+    await page.setViewport({ width: 1920, height: 1080 });
+
     for (let i = 1; i <= maxPage; i++) {
       console.log(`소상공인24 - ${i}페이지 수집 중...`);
       const targetUrl = `${baseUrl}/#/combinePbancList?page=${i}`;
@@ -108,7 +111,6 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
       await page.goto(targetUrl, { waitUntil: 'networkidle2' });
 
       try {
-        // 💡 [핵심 추가] 빈 화면을 긁어오는 것을 방지하기 위해, 표(table) 내용이 그려질 때까지 최대 5초 대기
         await page.waitForSelector('table.q-table tbody tr.q-tr', { timeout: 5000 });
       } catch (e) {
         console.log(`${i}페이지에 표 데이터가 없거나 로딩 지연됨. 건너뜁니다.`);
@@ -124,10 +126,8 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
           const titleEl = el.querySelector('.c_pbancNm a');
           if (!titleEl) return;
 
-          // 1. 공고명
           const title = titleEl.textContent?.trim() || '';
 
-          // 2. 상세 주소 조립 ( #/extldPbanc/... -> https://www.sbiz24.kr/#/extldPbanc/... )
           let detailUrl = titleEl.getAttribute('href') || '';
           if (detailUrl.startsWith('#')) {
             detailUrl = `${currentBaseUrl}/${detailUrl}`;
@@ -135,10 +135,15 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
             detailUrl = currentBaseUrl + detailUrl;
           }
 
-          // 3. 접수기간, 카테고리, 주관기관 파싱 (보내주신 HTML 클래스명 기준)
-          const period = el.querySelector('.c_aplyPd')?.textContent?.trim() || '';
-          const category = el.querySelector('.c_rcrtTypeCdNm')?.textContent?.trim() || '소상공인';
-          const department = el.querySelector('.c_departNm')?.textContent?.trim() || '소상공인시장진흥공단';
+          // 💡 [수정] span 태그 안의 텍스트를 더 명확하게 가져오도록 보강
+          const periodEl = el.querySelector('.c_aplyPd span') || el.querySelector('.c_aplyPd');
+          const period = periodEl ? periodEl.textContent?.trim() : '기간 미상'; // 파싱 실패 시 '기간 미상'으로 저장되도록 하여 오류 원인 파악
+          
+          const categoryEl = el.querySelector('.c_rcrtTypeCdNm span') || el.querySelector('.c_rcrtTypeCdNm');
+          const category = categoryEl ? categoryEl.textContent?.trim() : '소상공인';
+          
+          const departEl = el.querySelector('.c_departNm span') || el.querySelector('.c_departNm');
+          const department = departEl ? departEl.textContent?.trim() : '소상공인시장진흥공단';
 
           if (title) {
             scraped.push({ category, title, period, department, detailUrl });
@@ -150,13 +155,11 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
 
       results.push(...pageData);
 
-      // 서버 부하 및 차단 방지를 위한 1.5초 대기
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
 
     await browser.close();
 
-    // 중복 검사 후 신규 등록 또는 업데이트 처리
     let newCount = 0;
     let updateCount = 0;
 
