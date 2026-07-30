@@ -127,7 +127,9 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
           const department = '소상공인시장진흥공단';
           
           // 💡 [수정됨] 제공해주신 클래스명(.c_aplyPd)으로 접수기간을 파싱합니다.
+          console.log(`${el.querySelector('.c_aplyPd')?.textContent?.trim()}`);
           const period = el.querySelector('.c_aplyPd')?.textContent?.trim() || '';
+          console.log(`period - ${period}`)
 
           if (title) {
             scraped.push({ category, title, period, department, detailUrl });
