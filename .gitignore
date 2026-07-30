@@ -1,0 +1,8 @@
+node_modules/
+.next/
+out/
+.env
+.env.production
+.DS_Store
+public
+dist
