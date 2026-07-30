@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { Op } from 'sequelize'; // 데이터베이스 검색 연산자 임포트
+import puppeteer from 'puppeteer';
 import { SupportFund } from '../models/SupportFund';
 
 const router = Router();
@@ -69,7 +70,83 @@ router.post('/scrape', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: '서버 오류 발생' });
   }
 });
+router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
+  try {
+    const maxPage = 10;
+    const baseUrl = 'https://www.sbiz24.kr';
+    const results: any[] = [];
 
+    console.log('소상공인24 크롤링을 시작합니다. (가상 브라우저 구동 중...)');
+
+    // 헤드리스 브라우저 실행 (화면에 창이 보이지 않게 백그라운드에서 실행)
+    const browser = await puppeteer.launch({ 
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+    });
+    const page = await browser.newPage();
+
+    for (let i = 1; i <= maxPage; i++) {
+      console.log(`소상공인24 - ${i}페이지 수집 중...`);
+      const targetUrl = `${baseUrl}/#/combinePbancList?page=${i}`;
+
+      // 해당 페이지로 이동 후, 네트워크 요청이 거의 끝날 때까지 대기
+      await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+
+      // 페이지 내부의 DOM에 접근하여 데이터 추출
+      const pageData = await page.evaluate((currentBaseUrl) => {
+        const scraped: any[] = [];
+        
+        // 💡 임시 선택자: 실제 sbiz24.kr의 HTML 구조(class)에 맞춰 수정이 필요합니다.
+        // table > tbody > tr 또는 ul > li 구조를 탐색합니다.
+        const items = document.querySelectorAll('.pbanc-list-wrap li, table tbody tr'); 
+        
+        items.forEach((el) => {
+          const titleEl = el.querySelector('a, .title, .tit');
+          if (!titleEl) return;
+
+          const title = titleEl.textContent?.trim() || '';
+          
+          let detailUrl = '';
+          const aTag = el.querySelector('a');
+          if (aTag) {
+            detailUrl = aTag.href; 
+          }
+
+          // 상태, 등록일, 주관기관 파싱 (클래스명은 실제 웹사이트 참고 필요)
+          const category = el.querySelector('.badge, .status')?.textContent?.trim() || '소상공인정책자금';
+          const period = el.querySelector('.date, .period')?.textContent?.trim() || '';
+          const department = el.querySelector('.agency, .dept')?.textContent?.trim() || '소상공인시장진흥공단';
+
+          scraped.push({ category, title, period, department, detailUrl });
+        });
+
+        return scraped;
+      }, baseUrl);
+
+      results.push(...pageData);
+
+      // 서버 블락 방지를 위한 1초 대기
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    await browser.close();
+
+    // 기존 데이터 밑에 추가 (Bulk Insert)
+    if (results.length > 0) {
+      await SupportFund.bulkCreate(results);
+    }
+
+    console.log(`소상공인24 크롤링 완료! ${results.length}개 저장.`);
+    res.json({
+      success: true,
+      message: `소상공인24 공고 ${results.length}개 수집 및 기존 DB에 추가 완료`,
+    });
+
+  } catch (error) {
+    console.error('소상공인24 크롤링 에러:', error);
+    res.status(500).json({ success: false, message: '크롤링 중 오류 발생' });
+  }
+});
 router.post('/scrape/k-startup', async (req: Request, res: Response) => {
   try {
     const results: any = [];
