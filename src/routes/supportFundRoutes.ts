@@ -140,7 +140,7 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
           const period = periodEl ? periodEl.textContent?.trim() : '기간 미상'; // 파싱 실패 시 '기간 미상'으로 저장되도록 하여 오류 원인 파악
           
           const categoryEl = el.querySelector('.c_rcrtTypeCdNm span') || el.querySelector('.c_rcrtTypeCdNm');
-          const category = '소상공인';
+          const category = categoryEl ? categoryEl.textContent?.trim() : '소상공인';
           
           const departEl = el.querySelector('.c_departNm span') || el.querySelector('.c_departNm');
           const department = departEl ? departEl.textContent?.trim() : '소상공인시장진흥공단';
