@@ -89,14 +89,13 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
 
     console.log('소상공인24 크롤링을 시작합니다. (가상 브라우저 구동 중...)');
 
-    // 헤드리스 브라우저 실행
     const browser = await puppeteer.launch({
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // 리눅스 공유 메모리 제한 해제
-        '--disable-gpu'            // 서버 환경 GPU 비활성화
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
       ]
     });
     
@@ -106,30 +105,40 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
       console.log(`소상공인24 - ${i}페이지 수집 중...`);
       const targetUrl = `${baseUrl}/#/combinePbancList?page=${i}`;
 
-      // 해당 페이지로 이동 후, 네트워크 요청이 거의 끝날 때까지 대기
       await page.goto(targetUrl, { waitUntil: 'networkidle2' });
 
-      // 페이지 내부의 DOM에 접근하여 데이터 추출
+      try {
+        // 💡 [핵심 추가] 빈 화면을 긁어오는 것을 방지하기 위해, 표(table) 내용이 그려질 때까지 최대 5초 대기
+        await page.waitForSelector('table.q-table tbody tr.q-tr', { timeout: 5000 });
+      } catch (e) {
+        console.log(`${i}페이지에 표 데이터가 없거나 로딩 지연됨. 건너뜁니다.`);
+        continue;
+      }
+
+      // DOM 요소 추출
       const pageData = await page.evaluate((currentBaseUrl) => {
         const scraped: any[] = [];
-        
-        // table > tbody > tr 구조를 탐색
-        const items = document.querySelectorAll('table tbody tr');
+        const items = document.querySelectorAll('table.q-table tbody tr.q-tr');
 
         items.forEach((el) => {
-          const titleEl = el.querySelector('a');
+          const titleEl = el.querySelector('.c_pbancNm a');
           if (!titleEl) return;
 
+          // 1. 공고명
           const title = titleEl.textContent?.trim() || '';
-          const detailUrl = titleEl.href || '';
 
-          const category = '소상공인정책자금';
-          const department = '소상공인시장진흥공단';
-          
-          // 💡 [수정됨] 제공해주신 클래스명(.c_aplyPd)으로 접수기간을 파싱합니다.
-          console.log(`${el.querySelector('.c_aplyPd')?.textContent?.trim()}`);
+          // 2. 상세 주소 조립 ( #/extldPbanc/... -> https://www.sbiz24.kr/#/extldPbanc/... )
+          let detailUrl = titleEl.getAttribute('href') || '';
+          if (detailUrl.startsWith('#')) {
+            detailUrl = `${currentBaseUrl}/${detailUrl}`;
+          } else if (!detailUrl.startsWith('http')) {
+            detailUrl = currentBaseUrl + detailUrl;
+          }
+
+          // 3. 접수기간, 카테고리, 주관기관 파싱 (보내주신 HTML 클래스명 기준)
           const period = el.querySelector('.c_aplyPd')?.textContent?.trim() || '';
-          console.log(`period - ${period}`)
+          const category = el.querySelector('.c_rcrtTypeCdNm')?.textContent?.trim() || '소상공인';
+          const department = el.querySelector('.c_departNm')?.textContent?.trim() || '소상공인시장진흥공단';
 
           if (title) {
             scraped.push({ category, title, period, department, detailUrl });
@@ -141,13 +150,13 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
 
       results.push(...pageData);
 
-      // 서버 블락 방지를 위한 1초 대기
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // 서버 부하 및 차단 방지를 위한 1.5초 대기
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
 
     await browser.close();
 
-    // 💡 [수정됨] 기업마당과 동일하게 중복 검사 후 신규 등록 또는 업데이트 처리
+    // 중복 검사 후 신규 등록 또는 업데이트 처리
     let newCount = 0;
     let updateCount = 0;
 
