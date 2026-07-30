@@ -21,7 +21,7 @@ router.post('/scrape', async (req: Request, res: Response) => {
     for (let page = 1; page <= maxPage; page++) {
       console.log(`${page}페이지 수집 중...`);
       const url = `${baseUrl}/sii/siia/selectSIIA200View.do?null=&rows=15&cpage=${page}`;
-      
+
       const response = await axios.get(url);
       const $ = cheerio.load(response.data);
 
@@ -34,15 +34,15 @@ router.post('/scrape', async (req: Request, res: Response) => {
         const title = titleAnchor.text().trim();
         const period = $(tds[3]).text().trim();
         const department = $(tds[4]).text().trim();
-        
+
         // 💡 [수정됨] 보내주신 HTML 태그(href 속성) 기반으로 심플하게 URL 추출
         let detailUrl = '';
         const hrefAttr = titleAnchor.attr('href') || '';
-        
+
         if (hrefAttr) {
           // 1. 주소가 http로 시작하지 않으면 앞에 baseUrl을 붙여줍니다.
           detailUrl = hrefAttr.startsWith('http') ? hrefAttr : baseUrl + hrefAttr;
-          
+
           // 2. 주소 파라미터의 HTML 엔티티(&amp;)를 실제 앰퍼샌드(&) 기호로 변환합니다.
           detailUrl = detailUrl.replace(/&amp;/g, '&');
         }
@@ -79,9 +79,14 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
     console.log('소상공인24 크롤링을 시작합니다. (가상 브라우저 구동 중...)');
 
     // 헤드리스 브라우저 실행 (화면에 창이 보이지 않게 백그라운드에서 실행)
-    const browser = await puppeteer.launch({ 
+    const browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // 👈 (핵심) 리눅스 공유 메모리 제한 해제
+        '--disable-gpu'            // 👈 서버 환경에서는 GPU가 없으므로 비활성화
+      ]
     });
     const page = await browser.newPage();
 
@@ -95,21 +100,21 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
       // 페이지 내부의 DOM에 접근하여 데이터 추출
       const pageData = await page.evaluate((currentBaseUrl) => {
         const scraped: any[] = [];
-        
+
         // 💡 임시 선택자: 실제 sbiz24.kr의 HTML 구조(class)에 맞춰 수정이 필요합니다.
         // table > tbody > tr 또는 ul > li 구조를 탐색합니다.
-        const items = document.querySelectorAll('.pbanc-list-wrap li, table tbody tr'); 
-        
+        const items = document.querySelectorAll('.pbanc-list-wrap li, table tbody tr');
+
         items.forEach((el) => {
           const titleEl = el.querySelector('a, .title, .tit');
           if (!titleEl) return;
 
           const title = titleEl.textContent?.trim() || '';
-          
+
           let detailUrl = '';
           const aTag = el.querySelector('a');
           if (aTag) {
-            detailUrl = aTag.href; 
+            detailUrl = aTag.href;
           }
 
           // 상태, 등록일, 주관기관 파싱 (클래스명은 실제 웹사이트 참고 필요)
@@ -151,7 +156,7 @@ router.post('/scrape/k-startup', async (req: Request, res: Response) => {
   try {
     const results: any = [];
     const baseUrl = 'https://www.k-startup.go.kr';
-    
+
     // K-Startup 진행중인 공고 1페이지 주소
     const targetUrl = `${baseUrl}/web/contents/bizpbanc-ongoing.do`;
 
@@ -162,12 +167,12 @@ router.post('/scrape/k-startup', async (req: Request, res: Response) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
-    
+
     const $ = cheerio.load(response.data);
 
     // 제공된 HTML 기준: id가 bizPbancList인 곳 내부의 li.notice 반복
     $('#bizPbancList ul li.notice').each((_, element) => {
-      
+
       // 1. 공고 제목
       const title = $(element).find('.middle p.tit').text().trim();
       if (!title) return; // 제목이 없으면 건너뛰기
@@ -185,7 +190,7 @@ router.post('/scrape/k-startup', async (req: Request, res: Response) => {
 
       // 4. 부처 및 기관명, 신청기간 파싱
       const bottomLists = $(element).find('.bottom span.list');
-      
+
       let department = '';
       let startDate = '';
       let endDate = '';
@@ -266,10 +271,10 @@ router.get('/', async (req: Request, res: Response) => {
     if (category) {
       where.category = { [Op.like]: `%${category}%` }; // 지원분야 부분 일치
     }
-    
+
     // 부처 단독 검색
     if (department) {
-      where.department = { [Op.like]: `%${department}%` }; 
+      where.department = { [Op.like]: `%${department}%` };
     }
 
     // 💡 제목 검색 시 '제목 또는 부처'에 검색어가 포함되도록 Op.or 적용
@@ -290,8 +295,8 @@ router.get('/', async (req: Request, res: Response) => {
       offset,
     });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       data: funds,
       pagination: {
         totalItems: count,
