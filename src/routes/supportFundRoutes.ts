@@ -29,7 +29,7 @@ router.post('/scrape', async (req: Request, res: Response) => {
         const tds = $(element).find('td');
         if (tds.length < 5) return; // 빈 결과물 방어 로직
 
-        const category = $(tds[1]).text().trim();
+        const category = '기업마당';
         const titleAnchor = $(tds[2]).find('a');
         const title = titleAnchor.text().trim();
         const period = $(tds[3]).text().trim();
@@ -118,7 +118,7 @@ router.post('/scrape/sbiz24', async (req: Request, res: Response) => {
           }
 
           // 상태, 등록일, 주관기관 파싱 (클래스명은 실제 웹사이트 참고 필요)
-          const category = el.querySelector('.badge, .status')?.textContent?.trim() || '소상공인정책자금';
+          const category = '소상공인정책자금';
           const period = el.querySelector('.date, .period')?.textContent?.trim() || '';
           const department = el.querySelector('.agency, .dept')?.textContent?.trim() || '소상공인시장진흥공단';
 
@@ -178,7 +178,7 @@ router.post('/scrape/k-startup', async (req: Request, res: Response) => {
       if (!title) return; // 제목이 없으면 건너뛰기
 
       // 2. 카테고리 (D-day를 나타내는 span.day가 아닌 첫 번째 flag 스팬)
-      const category = $(element).find('.top span.flag').not('.day').text().trim() || '창업지원';
+      const category = 'K-Startup';
 
       // 3. 상세 URL 파싱
       let detailUrl = '';
